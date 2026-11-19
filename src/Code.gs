@@ -7,6 +7,9 @@ const CONFIG = {
   BRAND_NAME: "Livewire Lifecycle™",
   BOOKING_URL: "https://getlivewire.zohobookings.com/#/3987741000011670058",
   MIN_VALUE: 100,
+  // true = customer lifecycle emails are logged to DIAGNOSTIC_LOG as DRY_RUN instead of sent,
+  // and SentTimestamp is not written. Set to false to send for real.
+  DRY_RUN: true,
   SHEETS: {
     SALES: "RAW_SALES",
     ITEMS: "RAW_ITEMS",
@@ -337,19 +340,44 @@ function sendLifecycleEmails() {
   const data = qSheet.getDataRange().getValues();
   let count = 0;
     let excludedCount = 0;
+  let skippedCount = 0;
   for (let i = 1; i < data.length; i++) {
     const r = data[i];
     if (r[4] === true && !r[5] && r[1].indexOf('@') > -1) {
+      const check = lcPreSendCheck(r[1]);
+      if (!check.ok) {
+        lcLog_('SKIP', r[0] + ' <' + r[1] + '>: ' + check.reason);
+        skippedCount++;
+        continue;
+      }
       log("RAW_ITEMS_VALUE", "Customer: " + r[0] + " | Raw Items (r[6]): " + r[6]);
       const html = getEmailTemplate(r[0], r[2], r[3], r[6], log);
-      GmailApp.sendEmail(r[1], (r[0].indexOf(',') > -1 ? r[0].split(',')[1].trim() : r[0].split(' ')[0].trim()) + " — your tech is showing its age", "", { htmlBody: html, name: "Livewire Concierge" });
-      qSheet.getRange(i + 1, 6).setValue(new Date());
-      count++;
+      if (lcSendLifecycleEmail_(r[1], lcGreetingName(r[0], ''), html, log)) {
+        qSheet.getRange(i + 1, 6).setValue(new Date());
+        count++;
+      }
     } else if (r[5]) { excludedCount++; }
   }
-    Logger.log("Sent " + count + " emails.");
-      return { sent: count, excluded: excludedCount, total: data.length - 1 };
+    Logger.log("Sent " + count + " emails. Skipped " + skippedCount + "." + (CONFIG.DRY_RUN ? " (DRY_RUN: nothing sent)" : ""));
+      return { sent: count, excluded: excludedCount, total: data.length - 1, skipped: skippedCount };
 
+}
+
+/**
+ * Sends one customer lifecycle email (subject, HTML and plain-text part).
+ * firstName may be '' (from lcGreetingName), which gives the no-name subject.
+ * Returns true if the email was sent, false when CONFIG.DRY_RUN only logged it.
+ */
+function lcSendLifecycleEmail_(email, firstName, html, log) {
+  var subject = firstName
+    ? firstName + ' — your tech is showing its age'
+    : 'Your tech is showing its age';
+  if (CONFIG.DRY_RUN) {
+    log('DRY_RUN', 'Would send to ' + email + ' | Subject: ' + subject);
+    return false;
+  }
+  GmailApp.sendEmail(email, subject, lcHtmlToText(html), { htmlBody: html, name: 'Livewire Concierge' });
+  return true;
 }
 
 function initTabs(ss) {
@@ -357,8 +385,10 @@ function initTabs(ss) {
 }
 
 function getEmailTemplate(name, count, date, itemData, log) {
-  var firstName = (name.indexOf(',') > -1) ? name.split(',')[1] : name.split(' ')[0];
-  firstName = firstName.trim();
+  var firstName = lcGreetingName(name, '');
+  var headline = firstName
+    ? firstName + ' — your technology is showing its age.'
+    : 'Your technology is showing its age.';
   var itemsListHtml = "";
   var THUMBNAILS = {
     "Networking": "https://images.unsplash.com/photo-1544197150-b99a580bb7a8?w=400",
@@ -485,7 +515,7 @@ function getEmailTemplate(name, count, date, itemData, log) {
     '<tr><td style="background-color:#111111;padding:0 28px 14px 28px;border-bottom:1px solid #2a2a2a">' +
     '<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#666666;letter-spacing:0.06em;text-transform:uppercase">Your installed technology</p></td></tr>' +
     '<tr><td style="background-color:#111111;padding:40px 28px 44px 28px">' +
-    '<h1 style="margin:0;font-family:Georgia,serif;font-size:30px;line-height:1.25;color:#f5f5f0;font-weight:normal">' + firstName + ' \u2014 your technology is showing its age.</h1></td></tr>' +
+    '<h1 style="margin:0;font-family:Georgia,serif;font-size:30px;line-height:1.25;color:#f5f5f0;font-weight:normal">' + headline + '</h1></td></tr>' +
     '<tr><td style="background-color:#ffffff;padding:32px 28px 24px 28px">' +
     '<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.65;color:#333333">We installed and have maintained your systems for years. We wanted to give you an honest picture of where things stand today.</p></td></tr>' +
     '<tr><td style="background-color:#e8e7e2;padding:22px 28px 10px 28px">' +
@@ -510,7 +540,8 @@ function getEmailTemplate(name, count, date, itemData, log) {
     '<p style="margin:0 0 4px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#333333;font-weight:bold">Henry Clifford</p>' +
     '<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#666666;line-height:1.6">Livewire \u00b7 Richmond, VA \u00b7 804.937.9001</p></td></tr>' +
     '<tr><td style="background-color:#f4f4f0;padding:18px 28px;border-radius:0 0 4px 4px;border-top:1px solid #e0e0da">' +
-    '<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#999999;line-height:1.5;text-align:center">You\u2019re receiving this because Livewire services your home technology. Questions? Reply to this email.</p></td></tr>' +
+    '<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#999999;line-height:1.5;text-align:center">You\u2019re receiving this because Livewire services your home technology. Questions? Reply to this email.</p>' +
+    '<p style="margin:6px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#999999;line-height:1.5;text-align:center">Prefer not to get these emails? Reply with \u201cunsubscribe\u201d and we\u2019ll take you off the list.</p></td></tr>' +
     '</tbody></table></td></tr></tbody></table></div>';
 }
 
@@ -591,6 +622,12 @@ function sendCatchupBatch() {
     var hasEmail = r[1] && typeof r[1] === 'string' && r[1].indexOf('@') > -1;
     var notExcluded = !r[5];
     if (soonestReview && soonestReview < catchupCutoff && hasEmail && notExcluded) {
+      // Undeliverable rows are left out so they cannot block the batch or the caught-up check.
+      var check = lcPreSendCheck(r[1]);
+      if (!check.ok) {
+        lcLog_('SKIP', r[0] + ' <' + r[1] + '>: ' + check.reason);
+        continue;
+      }
       pending.push({ idx: i, r: r, date: soonestReview });
     }
   }
@@ -616,15 +653,10 @@ function sendCatchupBatch() {
     var rowIndex = item.idx;
     try {
       var html = getEmailTemplate(r[0], r[2], r[3], r[6], log);
-      var firstName = r[0].indexOf(',') > -1 ? r[0].split(',')[1].trim() : r[0].split(' ')[0].trim();
-      GmailApp.sendEmail(
-        r[1],
-        firstName + ' — your tech is showing its age',
-        '',
-        { htmlBody: html, name: 'Livewire Concierge' }
-      );
-      qSheet.getRange(rowIndex + 1, 6).setValue(new Date());
-      sent++;
+      if (lcSendLifecycleEmail_(r[1], lcGreetingName(r[0], ''), html, log)) {
+        qSheet.getRange(rowIndex + 1, 6).setValue(new Date());
+        sent++;
+      }
     } catch (e) {
       log('CATCHUP_ERROR', 'Row ' + (rowIndex + 1) + ' (' + r[0] + '): ' + e.message);
     }

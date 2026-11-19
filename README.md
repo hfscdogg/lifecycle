@@ -63,9 +63,20 @@ GmailApp.sendEmail(email, subject, lcHtmlToText(html), { htmlBody: html, name: s
   acronyms. A person whose surname is a business word (for example "Church" or "Law")
   also gets `''`, which falls back to the no-name subject.
 
+## Main sender (`src/Code.gs`)
+
+`src/Code.gs` and `src/appsscript.json` are the live project's files. The first commit that
+adds them is an unchanged copy; the next commit wires in the add-on:
+
+- `sendLifecycleEmails` and `sendCatchupBatch` call `lcPreSendCheck` before each send, use
+  `lcGreetingName` for the subject and headline, and send `lcHtmlToText(html)` as the plain-text part.
+- `CONFIG.DRY_RUN` (default `true`) logs each customer email to `DIAGNOSTIC_LOG` as `DRY_RUN`
+  instead of sending it, and leaves `SentTimestamp` empty. Set it to `false` to send.
+- The lifecycle email footer has a visible opt-out line (reply "unsubscribe").
+
 ## Not done yet
 
-- A visible opt-out line in the footer and a `List-Unsubscribe` header.
+- A `List-Unsubscribe` header. `GmailApp` cannot set custom headers; it needs the Gmail API.
 - Replacing the stock-photo image URLs with images hosted on the company site.
-
-Both need the main sender script, which builds the HTML.
+- The visit emails (`sendTechChecklist`, `sendClientReport`) still use the old greeting and
+  are not covered by `DRY_RUN`.
