@@ -968,7 +968,11 @@ function sendTechChecklist(rowIndex) {
   var html = buildTechChecklistHtml(custData, customer, address, visitDate, techName, bookingNotes);
   var subject = "Lifecycle Visit · " + customer + " · " +
     (visitDate ? Utilities.formatDate(new Date(visitDate), Session.getScriptTimeZone(), "EEE MMM d, h:mm a") : "TBD");
-  GmailApp.sendEmail(techEmail, subject, "", {
+  if (CONFIG.DRY_RUN) {
+    lcLog_('DRY_RUN', 'Would send tech checklist to ' + techEmail + ' | Subject: ' + subject);
+    return { ok: false, error: "DRY_RUN is on: checklist logged to DIAGNOSTIC_LOG, not sent." };
+  }
+  GmailApp.sendEmail(techEmail, subject, lcHtmlToText(html), {
     htmlBody: html,
     name: "Livewire Lifecycle Engine",
     bcc: "henry@getlivewire.com"
@@ -989,11 +993,20 @@ function sendClientReport(rowIndex) {
   if (!customer || !clientEmail) return { ok: false, error: "Missing customer or client email." };
   var custData = getCustomerLifecycleData(customer, clientEmail);
   if (!custData) return { ok: false, error: "Customer not found in EMAIL_QUEUE: " + customer + " / " + clientEmail };
+  var check = lcPreSendCheck(clientEmail);
+  if (!check.ok) {
+    lcLog_('SKIP', 'Client report for ' + customer + ' <' + clientEmail + '>: ' + check.reason);
+    return { ok: false, error: "Not sent to " + clientEmail + ": " + check.reason };
+  }
 
   var html = buildClientReportHtml(custData, customer, visitDate, techName, techNotes);
-  var firstName = customer.indexOf(",") > -1 ? customer.split(",")[1].trim() : customer.split(" ")[0].trim();
-  var subject = firstName + " — your Lifecycle Report";
-  GmailApp.sendEmail(clientEmail, subject, "", {
+  var firstName = lcGreetingName(customer, '');
+  var subject = firstName ? firstName + " — your Lifecycle Report" : "Your Lifecycle Report";
+  if (CONFIG.DRY_RUN) {
+    lcLog_('DRY_RUN', 'Would send client report to ' + clientEmail + ' | Subject: ' + subject);
+    return { ok: false, error: "DRY_RUN is on: report logged to DIAGNOSTIC_LOG, not sent." };
+  }
+  GmailApp.sendEmail(clientEmail, subject, lcHtmlToText(html), {
     htmlBody: html,
     name: "Livewire Concierge",
     bcc: "henry@getlivewire.com,3sk9a8_4c69hy5@mails3.zohocrm.com" // second address = Zoho CRM dropbox, auto-files report to the contact record
@@ -1187,7 +1200,8 @@ function buildBoilerplateSection(title, tasks) {
 }
 
 function buildClientReportHtml(custData, customer, visitDate, techName, techNotes) {
-  var firstName = customer.indexOf(",") > -1 ? customer.split(",")[1].trim() : customer.split(" ")[0].trim();
+  var firstName = lcGreetingName(customer, '');
+  var headline = firstName ? firstName + ', here is where things stand.' : 'Here is where things stand.';
   var dateLabel = visitDate
     ? Utilities.formatDate(new Date(visitDate), Session.getScriptTimeZone(), "MMMM d, yyyy")
     : "your recent visit";
@@ -1232,7 +1246,7 @@ function buildClientReportHtml(custData, customer, visitDate, techName, techNote
       '</td></tr>' +
       '<tr><td style="background:#111;padding:32px 28px 36px 28px;">' +
         '<p style="margin:0 0 6px 0;font-size:11px;color:#888;letter-spacing:0.1em;text-transform:uppercase;">Your home technology · ' + dateLabel + '</p>' +
-        '<h1 style="margin:0;font-family:Georgia,serif;font-size:28px;color:#f5f5f0;font-weight:normal;line-height:1.3;">' + firstName + ', here is where things stand.</h1>' +
+        '<h1 style="margin:0;font-family:Georgia,serif;font-size:28px;color:#f5f5f0;font-weight:normal;line-height:1.3;">' + headline + '</h1>' +
       '</td></tr>' +
       '<tr><td style="background:#fff;padding:32px 28px 8px 28px;">' +
         '<p style="margin:0 0 16px 0;font-size:15px;line-height:1.65;color:#333;">Thank you for having us in your home. Here is a plain-English look at every system we installed and where each one stands against its expected lifespan.</p>' +

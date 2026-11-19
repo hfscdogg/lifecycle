@@ -73,10 +73,11 @@ adds them is an unchanged copy; the next commit wires in the add-on:
 - `CONFIG.DRY_RUN` (default `true`) logs each customer email to `DIAGNOSTIC_LOG` as `DRY_RUN`
   instead of sending it, and leaves `SentTimestamp` empty. Set it to `false` to send.
 - The lifecycle email footer has a visible opt-out line (reply "unsubscribe").
+- Visit emails: `sendClientReport` runs `lcPreSendCheck` on the client address, greets with
+  `lcGreetingName` (subject and headline) and adds a plain-text part. `sendTechChecklist`
+  adds a plain-text part. Both are covered by `DRY_RUN`, which leaves their sent columns empty.
 
 ## Not done yet
 
 - A `List-Unsubscribe` header. `GmailApp` cannot set custom headers; it needs the Gmail API.
 - Replacing the stock-photo image URLs with images hosted on the company site.
-- The visit emails (`sendTechChecklist`, `sendClientReport`) still use the old greeting and
-  are not covered by `DRY_RUN`.
