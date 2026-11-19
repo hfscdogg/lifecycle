@@ -9,7 +9,7 @@ const CONFIG = {
   MIN_VALUE: 100,
   // true = customer lifecycle emails are logged to DIAGNOSTIC_LOG as DRY_RUN instead of sent,
   // and SentTimestamp is not written. Set to false to send for real.
-  DRY_RUN: true,
+  DRY_RUN: false,
   SHEETS: {
     SALES: "RAW_SALES",
     ITEMS: "RAW_ITEMS",

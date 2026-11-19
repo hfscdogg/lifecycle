@@ -70,7 +70,7 @@ adds them is an unchanged copy; the next commit wires in the add-on:
 
 - `sendLifecycleEmails` and `sendCatchupBatch` call `lcPreSendCheck` before each send, use
   `lcGreetingName` for the subject and headline, and send `lcHtmlToText(html)` as the plain-text part.
-- `CONFIG.DRY_RUN` (default `true`) logs each customer email to `DIAGNOSTIC_LOG` as `DRY_RUN`
+- `CONFIG.DRY_RUN` (live: `false` since 2026-11-19) when `true` logs each customer email to `DIAGNOSTIC_LOG` as `DRY_RUN`
   instead of sending it, and leaves `SentTimestamp` empty. Set it to `false` to send.
 - The lifecycle email footer has a visible opt-out line (reply "unsubscribe").
 - Visit emails: `sendClientReport` runs `lcPreSendCheck` on the client address, greets with
