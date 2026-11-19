@@ -130,6 +130,15 @@ function processBounces(lookbackDays) {
 
   lcLog_('BOUNCE', 'Scanned ' + scanned + ' bounce notices from the last ' + days +
     ' days; newly suppressed: ' + added);
+
+  // The same daily trigger also picks up "unsubscribe" replies (Unsubscribe.gs).
+  if (typeof processUnsubscribes === 'function') {
+    try {
+      processUnsubscribes(days);
+    } catch (e) {
+      lcLog_('UNSUBSCRIBE_ERROR', e.message);
+    }
+  }
   return added;
 }
 

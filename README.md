@@ -14,6 +14,7 @@ wired in with the few lines shown under "Wire into the send loop".
 | `src/Suppression.gs` | `SUPPRESSION` tab (created on first use), `lcIsSuppressed`, logging to `DIAGNOSTIC_LOG` |
 | `src/Bounces.gs` | `processBounces` reads Gmail bounce notices, suppresses failed queue addresses and turns off their `Send?` flag |
 | `src/PreSend.gs` | `lcPreSendCheck`, `lcGreetingName`, `lcHtmlToText` |
+| `src/Unsubscribe.gs` | `processUnsubscribes` suppresses customers who reply "unsubscribe"; runs from `processBounces` each day |
 | `tests/run.js` | Node tests for the pure helpers: `node tests/run.js` |
 
 ## Install
@@ -72,7 +73,11 @@ adds them is an unchanged copy; the next commit wires in the add-on:
   `lcGreetingName` for the subject and headline, and send `lcHtmlToText(html)` as the plain-text part.
 - `CONFIG.DRY_RUN` (live: `false` since 2026-11-19) when `true` logs each customer email to `DIAGNOSTIC_LOG` as `DRY_RUN`
   instead of sending it, and leaves `SentTimestamp` empty. Set it to `false` to send.
-- The lifecycle email footer has a visible opt-out line (reply "unsubscribe").
+- The lifecycle email footer has a visible opt-out line (reply "unsubscribe"). Replies asking to
+  unsubscribe (also "remove me", "opt out", "stop") are found daily by `processUnsubscribes`, which
+  suppresses the replying address and the address we wrote to, turns off `Send?`, logs `UNSUBSCRIBE`
+  and labels the thread `Lifecycle/Unsubscribe-processed`. Only the customer's own words are checked,
+  not the quoted original. `backfillUnsubscribes` scans the last 90 days once.
 - No repeat within `CONFIG.REPEAT_MONTHS` (12): every lifecycle send is recorded on the
   `SEND_HISTORY` tab, which the monthly rebuild never clears. Sends skip anyone emailed within
   the window, the monthly run writes their send date back into `SentTimestamp` after the rebuild,

@@ -5,7 +5,7 @@ const vm = require('vm');
 const assert = require('assert');
 
 const ctx = vm.createContext({});
-for (const file of ['Suppression.gs', 'Bounces.gs', 'PreSend.gs']) {
+for (const file of ['Suppression.gs', 'Bounces.gs', 'PreSend.gs', 'Unsubscribe.gs']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', file), 'utf8'), ctx, { filename: file });
 }
 const call = (expr) => vm.runInContext(expr, ctx);
@@ -119,6 +119,25 @@ test('html to text', () => {
     '<p>We&rsquo;ll walk   through it.</p><a href="https://example.com/book" style="x">Reserve &rarr;</a></div>';
   assert.strictEqual(call('lcHtmlToText(h)'),
     'Pat — hello\n\nWe’ll walk through it.\n\nReserve → (https://example.com/book)');
+});
+
+test('unsubscribe replies', () => {
+  const u = (body) => { ctx.b = body; return call('lcIsUnsubscribeRequest(b)'); };
+  const quoted = '\n\nOn Thu, Nov 19, 2026 at 9:56 AM Livewire Concierge <x@example.com> wrote:\n' +
+    '> Pat \u2014 your technology is showing its age.\n> Prefer not to get these emails? Reply with \u201cunsubscribe\u201d';
+  for (const yes of ['unsubscribe' + quoted, 'Unsubscribe.', 'STOP', 'Please remove me from your list.' + quoted,
+    'Please take me off this list, thanks' + quoted, 'opt out']) {
+    assert.ok(u(yes), yes);
+  }
+  for (const no of ['Sounds good, can we book for next Tuesday?' + quoted,
+    'Thanks! Who should I call?\n\nSent from my iPhone\n\n> unsubscribe',
+    'Thanks\r\n\r\n-----Original Message-----\r\nFrom: Livewire\r\nPrefer not to get these emails? Reply with unsubscribe',
+    'Thanks, interested.\n________________________________\nFrom: Livewire\nPrefer not to get these emails? Reply with unsubscribe',
+    '']) {
+    assert.ok(!u(no), no);
+  }
+  ctx.h = '"Smith, Pat" <Pat.Smith@Example.com>, lee@example.org';
+  assert.deepStrictEqual(plain(call('lcHeaderAddresses(h)')), ['pat.smith@example.com', 'lee@example.org']);
 });
 
 console.log(passed + ' tests passed');
