@@ -126,10 +126,13 @@ test('unsubscribe replies', () => {
   const quoted = '\n\nOn Thu, Nov 19, 2026 at 9:56 AM Livewire Concierge <x@example.com> wrote:\n' +
     '> Pat \u2014 your technology is showing its age.\n> Prefer not to get these emails? Reply with \u201cunsubscribe\u201d';
   for (const yes of ['unsubscribe' + quoted, 'Unsubscribe.', 'STOP', 'Please remove me from your list.' + quoted,
-    'Please take me off this list, thanks' + quoted, 'opt out']) {
+    'Please take me off this list, thanks' + quoted, 'opt out',
+    'Hello, I am retiring and no longer wish to receive email from livewire.' + quoted,
+    'Please remove my email from your list', 'Do not email me again', 'I don\u2019t want to receive these']) {
     assert.ok(u(yes), yes);
   }
   for (const no of ['Sounds good, can we book for next Tuesday?' + quoted,
+    'Please remove the old TV from the bill and call me' + quoted,
     'Thanks! Who should I call?\n\nSent from my iPhone\n\n> unsubscribe',
     'Thanks\r\n\r\n-----Original Message-----\r\nFrom: Livewire\r\nPrefer not to get these emails? Reply with unsubscribe',
     'Thanks, interested.\n________________________________\nFrom: Livewire\nPrefer not to get these emails? Reply with unsubscribe',

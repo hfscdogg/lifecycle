@@ -38,7 +38,7 @@ function lcIsUnsubscribeRequest(body) {
   var text = lcReplyText(body).slice(0, 500);
   if (!text) return false;
   if (/^\s*(stop|remove|unsubscribe)[\s.!]*$/i.test(text)) return true;
-  return /\b(unsubscribe|unsubcribe|opt[\s-]?out|remove me|take me off|stop (e-?mailing|sending|contacting)|no more (e-?mails|emails))\b/i.test(text);
+  return /\b(unsubscribe|unsubcribe|opt[\s-]?out|remove (me|my|us|our)|take (me|us) off|stop (e-?mailing|sending|contacting)|no more e-?mails?|(no longer|do not|don'?t|don\u2019t) (wish|want) to (receive|get|hear)|(do not|don'?t|don\u2019t) (e-?mail|contact|send) (me|us))\b/i.test(text);
 }
 
 /** Pure. The bare address from a From/To header such as 'Pat <pat@example.com>'. */
