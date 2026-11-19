@@ -73,6 +73,10 @@ adds them is an unchanged copy; the next commit wires in the add-on:
 - `CONFIG.DRY_RUN` (live: `false` since 2026-11-19) when `true` logs each customer email to `DIAGNOSTIC_LOG` as `DRY_RUN`
   instead of sending it, and leaves `SentTimestamp` empty. Set it to `false` to send.
 - The lifecycle email footer has a visible opt-out line (reply "unsubscribe").
+- No repeat within `CONFIG.REPEAT_MONTHS` (12): every lifecycle send is recorded on the
+  `SEND_HISTORY` tab, which the monthly rebuild never clears. Sends skip anyone emailed within
+  the window, the monthly run writes their send date back into `SentTimestamp` after the rebuild,
+  and `clearExcludedFlags` now clears only exclusion flags, not send dates.
 - Visit emails: `sendClientReport` runs `lcPreSendCheck` on the client address, greets with
   `lcGreetingName` (subject and headline) and adds a plain-text part. `sendTechChecklist`
   adds a plain-text part. Both are covered by `DRY_RUN`, which leaves their sent columns empty.

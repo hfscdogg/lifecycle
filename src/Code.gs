@@ -10,6 +10,8 @@ const CONFIG = {
   // true = customer lifecycle emails are logged to DIAGNOSTIC_LOG as DRY_RUN instead of sent,
   // and SentTimestamp is not written. Set to false to send for real.
   DRY_RUN: false,
+  // A customer gets at most one lifecycle email in this many months (tracked on SEND_HISTORY).
+  REPEAT_MONTHS: 12,
   SHEETS: {
     SALES: "RAW_SALES",
     ITEMS: "RAW_ITEMS",
@@ -29,12 +31,16 @@ function setupMonthlyTrigger() {
 }
 
 function monthlyLifecycleRun() {
+  // Save SentTimestamps to SEND_HISTORY before the rebuild erases them
+  lcSyncSendHistory_();
   // Snapshot any exclusions Henry set via the preview digest opt-out links
   var excluded = getExcludedEmails();
   // Rebuild the queue from current data
   processLifecycleData();
   // Re-apply exclusions (processLifecycleData clears the sheet)
   reapplyExclusions(excluded);
+  // Put back the send date for anyone emailed within CONFIG.REPEAT_MONTHS
+  lcRestoreRecentSends_();
   // Auto-send to everyone not excluded
   var result = sendLifecycleEmails();
   // Email Henry a confirmation
@@ -337,6 +343,7 @@ function sendLifecycleEmails() {
   const qSheet = ss.getSheetByName(CONFIG.SHEETS.QUEUE);
   const logSheet = ss.getSheetByName(CONFIG.SHEETS.LOG);
   const log = function(cat, msg) { logSheet.appendRow([new Date(), cat, msg]); };
+  lcSyncSendHistory_();
   const data = qSheet.getDataRange().getValues();
   let count = 0;
     let excludedCount = 0;
@@ -344,6 +351,13 @@ function sendLifecycleEmails() {
   for (let i = 1; i < data.length; i++) {
     const r = data[i];
     if (r[4] === true && !r[5] && r[1].indexOf('@') > -1) {
+      const recent = lcRecentSendDate_(r[1]);
+      if (recent) {
+        lcLog_('SKIP', r[0] + ' <' + r[1] + '>: emailed ' + Utilities.formatDate(recent, Session.getScriptTimeZone(), 'yyyy-MM-dd') + ', within ' + CONFIG.REPEAT_MONTHS + ' months');
+        qSheet.getRange(i + 1, 6).setValue(recent);
+        skippedCount++;
+        continue;
+      }
       const check = lcPreSendCheck(r[1]);
       if (!check.ok) {
         lcLog_('SKIP', r[0] + ' <' + r[1] + '>: ' + check.reason);
@@ -353,7 +367,9 @@ function sendLifecycleEmails() {
       log("RAW_ITEMS_VALUE", "Customer: " + r[0] + " | Raw Items (r[6]): " + r[6]);
       const html = getEmailTemplate(r[0], r[2], r[3], r[6], log);
       if (lcSendLifecycleEmail_(r[1], lcGreetingName(r[0], ''), html, log)) {
-        qSheet.getRange(i + 1, 6).setValue(new Date());
+        const sentAt = new Date();
+        qSheet.getRange(i + 1, 6).setValue(sentAt);
+        lcRecordSend_(r[1], sentAt);
         count++;
       }
     } else if (r[5]) { excludedCount++; }
@@ -378,6 +394,88 @@ function lcSendLifecycleEmail_(email, firstName, html, log) {
   }
   GmailApp.sendEmail(email, subject, lcHtmlToText(html), { htmlBody: html, name: 'Livewire Concierge' });
   return true;
+}
+
+/*
+ * SEND_HISTORY: one row per address with the last lifecycle email date. Unlike
+ * EMAIL_QUEUE it is never rebuilt, so it is what enforces CONFIG.REPEAT_MONTHS.
+ */
+var LC_HISTORY_SHEET = 'SEND_HISTORY';
+var lcHistoryCache_ = null; // { email: { row: n, date: Date } }
+
+function lcHistorySheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(LC_HISTORY_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(LC_HISTORY_SHEET);
+    sheet.appendRow(['Email', 'Last Sent']);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function lcLoadHistory_() {
+  if (lcHistoryCache_) return lcHistoryCache_;
+  var sheet = lcHistorySheet_();
+  var map = {};
+  var last = sheet.getLastRow();
+  if (last > 1) {
+    var values = sheet.getRange(2, 1, last - 1, 2).getValues();
+    for (var i = 0; i < values.length; i++) {
+      var email = lcNormalizeEmail(values[i][0]);
+      if (email && values[i][1] instanceof Date) map[email] = { row: i + 2, date: values[i][1] };
+    }
+  }
+  lcHistoryCache_ = map;
+  return map;
+}
+
+/** Saves a send date for the address, keeping whichever date is newer. */
+function lcRecordSend_(email, date) {
+  var key = lcNormalizeEmail(email);
+  if (!key || !(date instanceof Date)) return;
+  var map = lcLoadHistory_();
+  var entry = map[key];
+  if (entry) {
+    if (entry.date >= date) return;
+    lcHistorySheet_().getRange(entry.row, 2).setValue(date);
+    entry.date = date;
+  } else {
+    var sheet = lcHistorySheet_();
+    sheet.appendRow([key, date]);
+    map[key] = { row: sheet.getLastRow(), date: date };
+  }
+}
+
+/** The last send date if it is within CONFIG.REPEAT_MONTHS, otherwise null. */
+function lcRecentSendDate_(email) {
+  var entry = lcLoadHistory_()[lcNormalizeEmail(email)];
+  if (!entry) return null;
+  var cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - CONFIG.REPEAT_MONTHS);
+  return entry.date > cutoff ? entry.date : null;
+}
+
+/** Copies every SentTimestamp in EMAIL_QUEUE into SEND_HISTORY. */
+function lcSyncSendHistory_() {
+  var qSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.QUEUE);
+  if (!qSheet) return;
+  var data = qSheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][5] instanceof Date && data[i][1]) lcRecordSend_(data[i][1], data[i][5]);
+  }
+}
+
+/** After a rebuild, writes the last send date back into SentTimestamp for recently emailed rows. */
+function lcRestoreRecentSends_() {
+  var qSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.QUEUE);
+  if (!qSheet) return;
+  var data = qSheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][5] || !data[i][1]) continue;
+    var recent = lcRecentSendDate_(data[i][1]);
+    if (recent) qSheet.getRange(i + 1, 6).setValue(recent);
+  }
 }
 
 function initTabs(ss) {
@@ -552,7 +650,8 @@ function getExcludedEmails() {
           var data = qSheet.getDataRange().getValues();
             var excluded = [];
               for (var i = 1; i < data.length; i++) {
-                  if (data[i][5]) {
+                  // Send dates are not exclusions; they are kept on SEND_HISTORY instead.
+                  if (data[i][5] && !(data[i][5] instanceof Date)) {
                         excluded.push(data[i][1]);
                             }
                               }
@@ -586,7 +685,8 @@ function reapplyExclusions(excluded) {
                                             if (!qSheet) return;
                                               var data = qSheet.getDataRange().getValues();
                                                 for (var i = 1; i < data.length; i++) {
-                                                    if (data[i][5]) {
+                                                    // Clear exclusion flags only; leave send dates in place.
+                                                    if (data[i][5] && !(data[i][5] instanceof Date)) {
                                                           qSheet.getRange(i + 1, 6).setValue(false);
                                                               }
                                                                 }
@@ -612,6 +712,7 @@ function sendCatchupBatch() {
   var catchupCutoff = new Date('2026-04-01');
   var caughtUpThreshold = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
 
+  lcSyncSendHistory_();
   var data = qSheet.getDataRange().getValues();
 
   // Collect all rows still needing a catch-up send
@@ -622,6 +723,12 @@ function sendCatchupBatch() {
     var hasEmail = r[1] && typeof r[1] === 'string' && r[1].indexOf('@') > -1;
     var notExcluded = !r[5];
     if (soonestReview && soonestReview < catchupCutoff && hasEmail && notExcluded) {
+      // Emailed within CONFIG.REPEAT_MONTHS: restore the send date and leave it out.
+      var recent = lcRecentSendDate_(r[1]);
+      if (recent) {
+        qSheet.getRange(i + 1, 6).setValue(recent);
+        continue;
+      }
       // Undeliverable rows are left out so they cannot block the batch or the caught-up check.
       var check = lcPreSendCheck(r[1]);
       if (!check.ok) {
@@ -654,7 +761,9 @@ function sendCatchupBatch() {
     try {
       var html = getEmailTemplate(r[0], r[2], r[3], r[6], log);
       if (lcSendLifecycleEmail_(r[1], lcGreetingName(r[0], ''), html, log)) {
-        qSheet.getRange(rowIndex + 1, 6).setValue(new Date());
+        var sentAt = new Date();
+        qSheet.getRange(rowIndex + 1, 6).setValue(sentAt);
+        lcRecordSend_(r[1], sentAt);
         sent++;
       }
     } catch (e) {
