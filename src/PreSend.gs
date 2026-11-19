@@ -27,8 +27,7 @@ function lcIsValidEmailSyntax(email) {
 }
 
 function lcInternalDomain_() {
-  var me = Session.getEffectiveUser().getEmail() || '';
-  return me.split('@')[1] ? me.split('@')[1].toLowerCase() : '';
+  return String(LC.INTERNAL_DOMAIN || '').toLowerCase();
 }
 
 function lcDnsHasRecords_(domain, type) {

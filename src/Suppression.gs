@@ -15,6 +15,8 @@ var LC = {
   BOUNCE_LOOKBACK_DAYS: 3,
   // Rows addressed to the sender's own domain are test records or placeholders.
   SKIP_INTERNAL_DOMAIN: true,
+  // The sender's own domain. Set here rather than looked up, so no extra permission is needed.
+  INTERNAL_DOMAIN: 'getlivewire.com',
   SUPPRESSION_HEADERS: ['Email', 'Reason', 'DSN Code', 'Date Added', 'Gmail Thread ID']
 };
 

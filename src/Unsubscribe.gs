@@ -67,7 +67,7 @@ function processUnsubscribes(lookbackDays) {
   var labelQuery = LC_UNSUB_LABEL.toLowerCase().replace(/[\/ ]/g, '-');
   var subjects = LC_UNSUB_SUBJECTS.map(function (s) { return '"' + s + '"'; }).join(' OR ');
   var query = 'subject:(' + subjects + ') newer_than:' + days + 'd -label:' + labelQuery;
-  var me = lcNormalizeEmail(Session.getEffectiveUser().getEmail());
+  var ours = function (address) { return address.split('@')[1] === lcInternalDomain_(); };
   var queue = lcQueueIndex_();
   var added = 0, replies = 0, start = 0, page;
 
@@ -81,7 +81,7 @@ function processUnsubscribes(lookbackDays) {
       for (var i = 0; i < messages.length; i++) {
         var message = messages[i];
         var from = lcHeaderAddresses(message.getFrom());
-        if (from.indexOf(me) !== -1) {
+        if (from.length && from.every(ours)) {
           ourRecipients = ourRecipients.concat(lcHeaderAddresses(message.getTo()));
           continue;
         }
@@ -91,7 +91,7 @@ function processUnsubscribes(lookbackDays) {
         var targets = from.concat(ourRecipients);
         for (var a = 0; a < targets.length; a++) {
           var address = targets[a];
-          if (!address || address === me) continue;
+          if (!address || ours(address)) continue;
           if (lcAddSuppression_(address, 'Unsubscribed (reply)', '', thread.getId())) {
             added++;
             lcLog_('UNSUBSCRIBE', 'Suppressed ' + address + ' (replied to "' + thread.getFirstMessageSubject() + '")');
